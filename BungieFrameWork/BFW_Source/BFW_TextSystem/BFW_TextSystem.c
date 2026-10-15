@@ -719,11 +719,15 @@ TSiTextureCache_RenderGlyph(
 #endif
 // ======================================================================
 // ----------------------------------------------------------------------
+// Roman fonts include single-byte European/Cyrillic codes above 0x7f.
+// Keep the legacy Asian decoder until level zero tells us its font language.
+static UUtBool TSgDoubleByte = UUcTrue;
+
 static UUtBool
 TSiCharacter_IsDoubleByte(
 	const UUtUns16		inCharacter)
 {
-	if ((inCharacter & 0x8000) &&
+	if (TSgDoubleByte && (inCharacter & 0x8000) &&
 		(UUmHighByte(inCharacter) != TScCaretCharacter))
 	{
 		return UUcTrue;
@@ -741,14 +745,13 @@ TSiString_GetNextCharacter(
 {
 	UUtUns16			character;
 
-	character = (UUtUns16)((UUtUns8)inString[0] << 8);
-	if (character == 0)  return character;
-	character |= (UUtUns16)((UUtUns8)inString[1]);
+	character = (UUtUns8)inString[0];
+	if (!TSgDoubleByte || character < 0x80 || character == TScCaretCharacter)
+		return character;
 
-	if (TSiCharacter_IsDoubleByte(character) == UUcFalse)
-	{
-		character >>= 8;
-	}
+	// A dangling lead byte must not consume the NUL and walk past the string.
+	if (inString[1] != '\0')
+		character = (character << 8) | (UUtUns8)inString[1];
 
 	return character;
 }
@@ -1942,6 +1945,25 @@ void
 TSrTerminate(
 	void)
 {
+}
+
+// ----------------------------------------------------------------------
+void
+TSrLevel_Load(
+	void)
+{
+	TStFontFamily *family = TMrInstance_GetFromName(
+		TScTemplate_FontFamily, TScFontFamily_Default);
+	const char *language = family && family->font_language
+		? TMrInstance_GetInstanceName(family->font_language) : NULL;
+
+	// Roman covers English and the European/Russian retail localizations.
+	// Their bytes already index the bundled glyphs; no Unicode conversion is
+	// needed. Other/unknown languages retain the original two-byte behavior.
+	TSgDoubleByte = !(language && strcmp(language, "Roman") == 0);
+	UUrStartupMessage("[text] font language=%s, encoding=%s",
+		language ? language : "unknown",
+		TSgDoubleByte ? "legacy double-byte" : "single-byte");
 }
 
 // ======================================================================

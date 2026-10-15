@@ -427,6 +427,8 @@ ONrLevel_LoadZero(
 	error = TMrLevel_Load(0, ONgCommandLine.allowPrivateData);
 	UUmError_ReturnOnErrorMsg(error, "Could not load level 0");
 
+	TSrLevel_Load();
+
 	// read the game settings instance
 	error = ONrGameSettings_Initialize();
 	UUmError_ReturnOnErrorMsg(error, "Could not init game settings");
