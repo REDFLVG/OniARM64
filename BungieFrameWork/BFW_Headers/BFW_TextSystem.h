@@ -205,6 +205,11 @@ void
 TSrTerminate(
 	void);
 
+// Select the retail text encoding after level-zero font resources are loaded.
+void
+TSrLevel_Load(
+	void);
+
 UUtError
 TSrTextureCache_Initialize(
 	void);
