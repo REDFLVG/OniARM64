@@ -27,6 +27,9 @@
 #include "Oni_Level.h"
 #include "Oni.h"
 #include "Oni_RendererPref.h"
+#include "Oni_MouseSensitivity.h"
+#include "WM_Button.h"
+#include <stdio.h>
 
 #ifdef __APPLE__
 #include <mach-o/dyld.h>
@@ -79,7 +82,11 @@ enum
 	ONcOptions_CB_InvertMouseOn		= 109,
 	ONcOptions_Sldr_Gamma			= 110,
 	ONcOptions_CB_MetalRenderer		= 111,		/* #89: created at runtime, not in the shipping template */
-	ONcOptions_CB_OpenGLRenderer	= 112		/* #89: created at runtime, not in the shipping template */
+	ONcOptions_CB_OpenGLRenderer	= 112,
+	ONcOptions_Sldr_MouseSensitivity = 113,
+	ONcOptions_Txt_MouseSensitivity = 114,
+	ONcOptions_Btn_ResetMouse = 115,
+	ONcOptions_Txt_MouseValue = 116		/* #89: created at runtime, not in the shipping template */
 };
 
 enum
@@ -1254,6 +1261,110 @@ ONiResolutions_AddToPopup(
 	WMrPopupMenu_SetSelection(inPopupMenu, activeMode);
 }
 
+// The retail Options resource has no sensitivity row. Add one in the gap
+// above Close, using the existing font and slider skin, without changing data.
+static void ONiOGU_Options_UpdateMouseLabel(WMtDialog *dialog)
+{
+    char title[64];
+    WMtWindow *label = WMrDialog_GetItemByID(dialog, ONcOptions_Txt_MouseValue);
+    snprintf(title, sizeof(title), "%.3fx", (double)ONrMouseSensitivity_Get());
+    if (label != NULL) WMrWindow_SetTitle(label, title, sizeof(title));
+}
+
+// Roman retail fonts use single-byte strings, including the Russian data.
+// Detect its existing label instead of feeding UTF-8 into the legacy font.
+static UUtBool ONiOGU_Options_IsRussian(WMtDialog *dialog)
+{
+    for (WMtWindow *child = WMrWindow_GetFirstChild(dialog); child != NULL;
+        child = WMrWindow_GetNextSibling(child)) {
+        const char *title = WMrWindow_GetTitlePtr(child);
+        if (title != NULL && strncmp(title, "\xca\xe0\xf7\xe5\xf1\xf2\xe2\xee", 8) == 0)
+            return UUcTrue; // Качество
+    }
+    return UUcFalse;
+}
+
+static void ONiOGU_Options_AddMouseRow(WMtDialog *dialog)
+{
+    WMtWindow *donor = WMrDialog_GetItemByID(dialog, ONcOptions_Sldr_Quality);
+    WMtWindow *invert = WMrDialog_GetItemByID(dialog, ONcOptions_CB_InvertMouseOn);
+    WMtWindow *close = WMrDialog_GetItemByID(dialog, WMcDialogItem_Cancel);
+    WMtWindow *label, *value, *slider, *reset;
+    TStFontInfo font;
+    UUtRect donor_rect, close_rect;
+    IMtPoint2D global, local;
+    UUtInt16 left, top, width;
+    UUtBool russian = ONiOGU_Options_IsRussian(dialog);
+    if (donor == NULL || invert == NULL || close == NULL) return;
+    WMrWindow_GetRect(donor, &donor_rect);
+    WMrWindow_GetRect(close, &close_rect);
+    WMrWindow_GetFontInfo(invert, &font);
+    font.font_size = 9;
+    // Separate label and live value above a wide slider. Close moves down
+    // within the original 640x480 dialog; the retail art/data stays intact.
+    global.x = donor_rect.left - 100;
+    global.y = close_rect.top - 14;
+    WMrWindow_GlobalToLocal(dialog, &global, &local);
+    left = local.x; top = local.y;
+    width = donor_rect.right - global.x;
+    label = WMrWindow_New(WMcWindowType_Text,
+        russian ? "\xd7\xf3\xe2\xf1\xf2\xe2\xe8\xf2\xe5\xeb\xfc\xed\xee\xf1\xf2\xfc" : "Mouse Sensitivity",
+        WMcWindowFlag_Visible | WMcWindowFlag_Child,
+        WMcTextStyle_Standard, ONcOptions_Txt_MouseSensitivity,
+        left, top, width - 70, 18, dialog, 0);
+    value = WMrWindow_New(WMcWindowType_Text, "", WMcWindowFlag_Visible | WMcWindowFlag_Child,
+        WMcTextStyle_HRight | WMcTextStyle_VCenter, ONcOptions_Txt_MouseValue,
+        left + width - 70, top, 70, 18, dialog, 0);
+    slider = WMrWindow_New(WMcWindowType_Slider, "", WMcWindowFlag_Visible | WMcWindowFlag_Child,
+        WMrWindow_GetStyle(donor), ONcOptions_Sldr_MouseSensitivity,
+        left, top + 20, width - 54, 20, dialog, 0);
+    reset = WMrWindow_New(WMcWindowType_Button, russian ? "\xd1\xe1\xf0\xee\xf1" : "Reset",
+        WMcWindowFlag_Visible | WMcWindowFlag_Child, WMcButtonStyle_PushButton, ONcOptions_Btn_ResetMouse,
+        left + width - 50, top + 20, 50, 20, dialog, 0);
+    WMtWindow *controls[] = {label, value, slider, reset};
+    if (label == NULL || value == NULL || slider == NULL || reset == NULL) {
+        for (unsigned i = 0; i < 4; i++)
+            if (controls[i] != NULL) WMrWindow_Delete(controls[i]);
+        UUrStartupMessage("mouse sensitivity: could not create Options controls");
+        return;
+    }
+    global.x = close_rect.left;
+    global.y = close_rect.top + 30;
+    WMrWindow_GlobalToLocal(dialog, &global, &local);
+    WMrWindow_SetLocation(close, local.x, local.y);
+    WMrSlider_SetRange(slider, 0, ONcMouseSensitivity_SliderMax);
+    WMrSlider_SetPosition(slider, ONrMouseSensitivity_ToSlider(ONrMouseSensitivity_Get()));
+    for (unsigned i = 0; i < 4; i++) {
+        WMrWindow_SetFontInfo(controls[i], &font);
+        WMrWindow_SetPosition(controls[i], NULL, 0, 0, 0, 0,
+            WMcPosChangeFlag_NoMove | WMcPosChangeFlag_NoSize);
+    }
+    ONiOGU_Options_UpdateMouseLabel(dialog);
+    UUrStartupMessage("mouse sensitivity: Options row at %d,%d width %d", (int)left, (int)top, (int)width);
+}
+
+static UUtBool ONiOGU_Options_HandleMouseCommand(WMtDialog *dialog, UUtUns16 id,
+    UUtUns16 notification, WMtWindow *control)
+{
+    switch (id) {
+        case ONcOptions_Sldr_MouseSensitivity:
+            if (notification == SLcNotify_NewPosition) {
+                ONrMouseSensitivity_Set(ONrMouseSensitivity_FromSlider(WMrSlider_GetPosition(control)));
+                ONiOGU_Options_UpdateMouseLabel(dialog);
+            }
+            return UUcTrue;
+        case ONcOptions_Btn_ResetMouse:
+            if (notification == WMcNotify_Click) {
+                ONrMouseSensitivity_Set(ONcMouseSensitivity_Default);
+                WMrSlider_SetPosition(WMrDialog_GetItemByID(dialog, ONcOptions_Sldr_MouseSensitivity),
+                    ONcMouseSensitivity_SliderDefault);
+                ONiOGU_Options_UpdateMouseLabel(dialog);
+            }
+            return UUcTrue;
+        default: return UUcFalse;
+    }
+}
+
 // ----------------------------------------------------------------------
 static void
 ONiOBU_Options_SetControls(
@@ -1331,9 +1442,11 @@ ONiOGU_Options_InitDialog(
 	// build the popup menu
 	popup = WMrDialog_GetItemByID(inDialog, ONcOptions_PM_Resolution);
 	ONiResolutions_AddToPopup(popup);
+    if (ONrLevel_GetCurrentLevel() > 0) WMrWindow_SetEnabled(popup, UUcFalse);
 
 	// set the fields
 	ONiOBU_Options_SetControls(inDialog);
+	ONiOGU_Options_AddMouseRow(inDialog);
 
 #ifdef __APPLE__
 	/* #89: the shipping Options template can't gain controls by editing game
@@ -1361,6 +1474,10 @@ ONiOGU_Options_InitDialog(
 			(WMrDialog_GetItemByID(inDialog, ONcOptions_CB_OpenGLRenderer) == NULL))
 		{
 			ONiOGU_Options_AddRendererRow(inDialog, anchor, anchor_is_checkbox);
+            if (ONrLevel_GetCurrentLevel() > 0) {
+                WMrWindow_SetEnabled(WMrDialog_GetItemByID(inDialog, ONcOptions_CB_MetalRenderer), UUcFalse);
+                WMrWindow_SetEnabled(WMrDialog_GetItemByID(inDialog, ONcOptions_CB_OpenGLRenderer), UUcFalse);
+            }
 		}
 	}
 #endif
@@ -1379,6 +1496,8 @@ ONiOGU_Options_HandleCommand(
 
 	control_id = UUmLowWord(inParam1);
 	command_type = UUmHighWord(inParam1);
+
+    if (ONiOGU_Options_HandleMouseCommand(inDialog, control_id, command_type, inControl)) return;
 
 	switch (control_id)
 	{
@@ -1610,6 +1729,11 @@ ONrOutGameUI_Options_Display(
 		0,
 		&message);
 
+    // Changes already affect gameplay; persist once per Options visit.
+    if (!ONrMouseSensitivity_Save()) {
+        UUrStartupMessage("mouse sensitivity: could not save preference");
+        AUrMessageBox(AUcMBType_OK, "Mouse sensitivity applies now, but could not be saved. Check access to the OniARM64 settings folder.");
+    }
 	// reset the active ui
 	PSrPartSpecUI_SetActive(partspec_ui);
 
@@ -1841,8 +1965,26 @@ ONiOGU_MainMenu_InitDialog(
 
 	if (ONrLevel_GetCurrentLevel() > 0)
 	{
-		WMrWindow_SetVisible(options, UUcFalse);
-		WMrWindow_SetVisible(resume, UUcTrue);
+        // Resume and Options occupy the same template slot. Fit five rows
+        // into the existing four-row region so Escape can expose both.
+        const UUtUns16 ids[] = {ONcMainMenu_Btn_Resume, ONcMainMenu_Btn_NewGame,
+            ONcMainMenu_Btn_LoadGame, ONcMainMenu_Btn_Options, ONcMainMenu_Btn_Quit};
+        WMtWindow *first = WMrDialog_GetItemByID(inDialog, ONcMainMenu_Btn_NewGame);
+        WMtWindow *last = WMrDialog_GetItemByID(inDialog, ONcMainMenu_Btn_Quit);
+        UUtRect first_rect, last_rect;
+        IMtPoint2D global, local;
+        WMrWindow_GetRect(first, &first_rect);
+        WMrWindow_GetRect(last, &last_rect);
+        for (unsigned i = 0; i < 5; i++) {
+            WMtWindow *button = WMrDialog_GetItemByID(inDialog, ids[i]);
+            global.x = first_rect.left;
+            global.y = first_rect.top + (last_rect.bottom - first_rect.top -
+                (first_rect.bottom - first_rect.top)) * i / 4;
+            WMrWindow_GlobalToLocal(inDialog, &global, &local);
+            WMrWindow_SetLocation(button, local.x, local.y);
+        }
+        WMrWindow_SetVisible(options, UUcTrue);
+        WMrWindow_SetVisible(resume, UUcTrue);
 	}
 	else
 	{
