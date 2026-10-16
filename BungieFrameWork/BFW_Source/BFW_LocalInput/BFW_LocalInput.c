@@ -16,6 +16,7 @@
 #include "BFW_ScriptLang.h"
 #include "Oni_KeyBindings.h"
 #include "Oni_Persistance.h"
+#include "Oni_MouseSensitivity.h"
 
 // ======================================================================
 // defines
@@ -334,6 +335,16 @@ LIrActionBuffer_Add(
 {
 	UUtUns16			i;
 	LItBinding			*binding;
+	float				analog_value = inDeviceInput->analogValue;
+
+	// Only relative mouse axes enter here; menu cursor events use a separate path.
+	// Keep the product floating point, including sub-pixel input at 0.05x.
+	// Wheel, keyboard and controller input retain their original values.
+	if ((inDeviceInput->input == LIcMouseCode_XAxis) ||
+		(inDeviceInput->input == LIcMouseCode_YAxis))
+	{
+		analog_value *= ONrMouseSensitivity_Get();
+	}
 
 	#if UUmPlatform != UUmPlatform_Mac
 
@@ -369,22 +380,22 @@ LIrActionBuffer_Add(
 
 		case LIcIT_Axis_Asymmetric:
 			outAction->analogValues[binding->action->actionData] +=
-				inDeviceInput->analogValue;
+				analog_value;
 		break;
 
 		case LIcIT_Axis_Symmetric_Pos:
 			outAction->analogValues[binding->action->actionData] +=
-				inDeviceInput->analogValue;
+				analog_value;
 		break;
 
 		case LIcIT_Axis_Symmetric_Neg:
 			outAction->analogValues[binding->action->actionData] -=
-				inDeviceInput->analogValue;
+				analog_value;
 		break;
 
 		case LIcIT_Axis_Delta:
 			outAction->analogValues[binding->action->actionData] +=
-				inDeviceInput->analogValue;
+				analog_value;
 		break;
 	}
 }
@@ -1042,6 +1053,7 @@ LIrInitialize(
 	UUtError			error;
 
 	UUrStartupMessage("initializing input system...");
+	UUrStartupMessage("mouse sensitivity: %.3fx", (double)ONrMouseSensitivity_Get());
 
 #if UUmPlatform == UUmPlatform_Win32
 	gInputMutex = CreateMutex(NULL, FALSE, NULL);

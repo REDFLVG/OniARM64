@@ -27,6 +27,14 @@ Currently it's playable (I've run through the first 4 levels... too many times..
 
 The whole campaign is playable. Chapters 1–9 were verified end-to-end by me (combat, AI, weapons, particle effects, audio, save/load) and chapters 10–14 were played through by simX ([#90](https://github.com/andiyar/OniARM64/issues/90#issuecomment-5768414956)). v1.3.0 is the first stable release; 1.3.0a1 and r1 to r5 were pre-releases. Loads either the original Mac retail or the PC game data (auto-detected). Downloadable and notarized .app in a DMG. The **native Metal renderer** (pick it in Options under "Sound and Renderer", or hold Option at launch) is now feature-complete with OpenGL; OpenGL remains the default. Continuing to bughunt. **HD texture packs** are supported: drop a pack into `~/Library/Application Support/OniARM64/TexturePacks` and its textures override the originals without touching your game data, or install using the new Oni Texture Installer app! List of stuff done / broken and fixed below. Issues tracking for interest are available, albeit it's more like Claude writing notes for Claude (although you can see the things done as it goes if interested).
 
+## Mouse sensitivity
+
+Options now includes a mouse-only sensitivity slider from **0.05x to 2.0x**, with **1.0x** preserving the original input. Most of the slider is devoted to slowing down, with a live numeric value and a **Reset** button. Russian retail data shows **Чувствительность** and **Сброс**. The setting applies immediately and saves when Options closes; it is available through **Escape → Options** during a level too. Resolution and renderer changes remain available from the title screen.
+
+The value lives in `~/Library/Application Support/OniARM64/mouse_sensitivity.txt` (or an existing file of that name in the working directory). Missing or invalid preferences use 1.0x. Mouse X/Y deltas stay floating point before they enter the action buffer, including at 0.05x; menu cursor, macOS settings, wheel, keys and gamepad input are unaffected. The input path is shared by Metal and OpenGL, and retail game data and `persist.dat` layouts are unchanged.
+
+Run `tests/test_mouse_sensitivity.sh` on macOS for preference, restart, real action-buffer and Options value/reset tests with AddressSanitizer and UndefinedBehaviorSanitizer. Run `tests/test_text_encoding.sh` for the existing localized-font regression tests.
+
 <details>
 <summary><strong>Full milestone status</strong></summary>
 
